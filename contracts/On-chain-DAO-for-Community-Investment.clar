@@ -5,9 +5,11 @@
 (define-constant ERR-ALREADY-VOTED (err u104))
 (define-constant ERR-PROPOSAL-ACTIVE (err u105))
 (define-constant ERR-PROPOSAL-INACTIVE (err u106))
+(define-constant ERR-WITHDRAWAL-LOCKED (err u107))
 (define-constant PROPOSAL-DURATION u144)
 (define-constant MIN-PROPOSAL-AMOUNT u1000000)
 (define-constant VOTING_POWER_MULTIPLIER u100)
+(define-constant WITHDRAWAL-LOCK-PERIOD u144)
 
 (define-data-var dao-owner principal tx-sender)
 (define-data-var total-funds uint u0)
@@ -36,6 +38,10 @@
         voter: principal,
     }
     bool
+)
+(define-map member-withdrawals
+    principal
+    uint
 )
 (define-data-var proposal-count uint u0)
 
@@ -114,6 +120,9 @@
         }
             true
         )
+        (map-set member-withdrawals tx-sender
+            (+ burn-block-height WITHDRAWAL-LOCK-PERIOD)
+        )
         (if vote-for
             (map-set proposals proposal-id
                 (merge proposal { yes-votes: (+ (get yes-votes proposal) vote-power) })
@@ -146,6 +155,24 @@
     (ok (unwrap! (map-get? proposals proposal-id) ERR-NO-PROPOSAL))
 )
 
+(define-public (withdraw (amount uint))
+    (let (
+            (user-balance (default-to u0 (map-get? user-balances tx-sender)))
+            (withdrawal-lock (default-to u0 (map-get? member-withdrawals tx-sender)))
+        )
+        (asserts! (>= user-balance amount) ERR-INSUFFICIENT-FUNDS)
+        (asserts! (>= burn-block-height withdrawal-lock) ERR-WITHDRAWAL-LOCKED)
+        (try! (as-contract (stx-transfer? amount tx-sender tx-sender)))
+        (map-set user-balances tx-sender (- user-balance amount))
+        (var-set total-funds (- (var-get total-funds) amount))
+        (ok true)
+    )
+)
+
 (define-read-only (get-user-balance (user principal))
     (ok (default-to u0 (map-get? user-balances user)))
+)
+
+(define-read-only (get-withdrawal-lock (user principal))
+    (ok (default-to u0 (map-get? member-withdrawals user)))
 )
