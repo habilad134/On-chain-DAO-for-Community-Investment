@@ -6,6 +6,8 @@
 (define-constant ERR-PROPOSAL-ACTIVE (err u105))
 (define-constant ERR-PROPOSAL-INACTIVE (err u106))
 (define-constant ERR-WITHDRAWAL-LOCKED (err u107))
+(define-constant ERR-CANNOT-DELEGATE-TO-SELF (err u108))
+(define-constant ERR-INVALID-DELEGATE (err u109))
 (define-constant PROPOSAL-DURATION u144)
 (define-constant MIN-PROPOSAL-AMOUNT u1000000)
 (define-constant VOTING_POWER_MULTIPLIER u100)
@@ -42,6 +44,10 @@
 (define-map member-withdrawals
     principal
     uint
+)
+(define-map delegations
+    principal
+    principal
 )
 (define-data-var proposal-count uint u0)
 
@@ -92,14 +98,59 @@
     )
 )
 
+(define-private (get-voting-power (voter principal))
+    (let (
+            (user-balance (default-to u0 (map-get? user-balances voter)))
+            (delegated-to (map-get? delegations voter))
+        )
+        (if (is-some delegated-to)
+            u0
+            (/ (* user-balance VOTING_POWER_MULTIPLIER) u100)
+        )
+    )
+)
+
+(define-private (get-total-voting-power (voter principal))
+    (let (
+            (own-power (get-voting-power voter))
+            (delegated-power (fold get-delegated-power-for-voter (list voter) u0))
+        )
+        (+ own-power delegated-power)
+    )
+)
+
+(define-private (get-delegated-power-for-voter
+        (voter principal)
+        (total uint)
+    )
+    (let ((delegators (filter is-delegated-to-voter (list voter))))
+        (fold add-delegator-power delegators total)
+    )
+)
+
+(define-private (is-delegated-to-voter (potential-delegator principal))
+    (is-eq (map-get? delegations potential-delegator) (some tx-sender))
+)
+
+(define-private (add-delegator-power
+        (delegator principal)
+        (total uint)
+    )
+    (let (
+            (delegator-balance (default-to u0 (map-get? user-balances delegator)))
+            (delegator-power (/ (* delegator-balance VOTING_POWER_MULTIPLIER) u100))
+        )
+        (+ total delegator-power)
+    )
+)
+
 (define-public (vote
         (proposal-id uint)
         (vote-for bool)
     )
     (let (
             (proposal (unwrap! (map-get? proposals proposal-id) ERR-NO-PROPOSAL))
-            (user-balance (default-to u0 (map-get? user-balances tx-sender)))
-            (vote-power (/ (* user-balance VOTING_POWER_MULTIPLIER) u100))
+            (vote-power (get-total-voting-power tx-sender))
         )
         (asserts! (< burn-block-height (get end-block proposal))
             ERR-PROPOSAL-INACTIVE
@@ -175,4 +226,26 @@
 
 (define-read-only (get-withdrawal-lock (user principal))
     (ok (default-to u0 (map-get? member-withdrawals user)))
+)
+
+(define-public (delegate-voting-power (delegate principal))
+    (begin
+        (asserts! (not (is-eq tx-sender delegate)) ERR-CANNOT-DELEGATE-TO-SELF)
+        (asserts! (> (default-to u0 (map-get? user-balances delegate)) u0)
+            ERR-INVALID-DELEGATE
+        )
+        (map-set delegations tx-sender delegate)
+        (ok true)
+    )
+)
+
+(define-public (revoke-delegation)
+    (begin
+        (map-delete delegations tx-sender)
+        (ok true)
+    )
+)
+
+(define-read-only (get-delegate (user principal))
+    (ok (map-get? delegations user))
 )
