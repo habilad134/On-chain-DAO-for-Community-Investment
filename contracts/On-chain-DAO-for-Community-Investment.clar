@@ -8,13 +8,18 @@
 (define-constant ERR-WITHDRAWAL-LOCKED (err u107))
 (define-constant ERR-CANNOT-DELEGATE-TO-SELF (err u108))
 (define-constant ERR-INVALID-DELEGATE (err u109))
+(define-constant ERR-DAO-PAUSED (err u110))
+(define-constant ERR-PAUSE-EXPIRED (err u111))
+(define-constant ERR-PAUSE-ACTIVE (err u112))
 (define-constant PROPOSAL-DURATION u144)
 (define-constant MIN-PROPOSAL-AMOUNT u1000000)
 (define-constant VOTING_POWER_MULTIPLIER u100)
 (define-constant WITHDRAWAL-LOCK-PERIOD u144)
+(define-constant EMERGENCY-PAUSE-DURATION u1008)
 
 (define-data-var dao-owner principal tx-sender)
 (define-data-var total-funds uint u0)
+(define-data-var emergency-pause-end uint u0)
 
 (define-map proposals
     uint
@@ -51,6 +56,10 @@
 )
 (define-data-var proposal-count uint u0)
 
+(define-private (is-dao-paused)
+    (> (var-get emergency-pause-end) burn-block-height)
+)
+
 (define-public (initialize (owner principal))
     (begin
         (asserts! (is-eq tx-sender (var-get dao-owner)) ERR-NOT-AUTHORIZED)
@@ -76,6 +85,7 @@
         (amount uint)
     )
     (let ((proposal-id (+ (var-get proposal-count) u1)))
+        (asserts! (not (is-dao-paused)) ERR-DAO-PAUSED)
         (asserts!
             (>= (default-to u0 (map-get? user-balances tx-sender))
                 MIN-PROPOSAL-AMOUNT
@@ -152,6 +162,7 @@
             (proposal (unwrap! (map-get? proposals proposal-id) ERR-NO-PROPOSAL))
             (vote-power (get-total-voting-power tx-sender))
         )
+        (asserts! (not (is-dao-paused)) ERR-DAO-PAUSED)
         (asserts! (< burn-block-height (get end-block proposal))
             ERR-PROPOSAL-INACTIVE
         )
@@ -188,6 +199,7 @@
 
 (define-public (execute-proposal (proposal-id uint))
     (let ((proposal (unwrap! (map-get? proposals proposal-id) ERR-NO-PROPOSAL)))
+        (asserts! (not (is-dao-paused)) ERR-DAO-PAUSED)
         (asserts! (>= burn-block-height (get end-block proposal))
             ERR-PROPOSAL-ACTIVE
         )
@@ -248,4 +260,31 @@
 
 (define-read-only (get-delegate (user principal))
     (ok (map-get? delegations user))
+)
+
+(define-public (emergency-pause)
+    (begin
+        (asserts! (is-eq tx-sender (var-get dao-owner)) ERR-NOT-AUTHORIZED)
+        (asserts! (is-eq (var-get emergency-pause-end) u0) ERR-PAUSE-ACTIVE)
+        (var-set emergency-pause-end
+            (+ burn-block-height EMERGENCY-PAUSE-DURATION)
+        )
+        (ok true)
+    )
+)
+
+(define-public (emergency-resume)
+    (begin
+        (asserts! (is-eq tx-sender (var-get dao-owner)) ERR-NOT-AUTHORIZED)
+        (asserts! (> (var-get emergency-pause-end) u0) ERR-PAUSE-EXPIRED)
+        (var-set emergency-pause-end u0)
+        (ok true)
+    )
+)
+
+(define-read-only (get-emergency-status)
+    (ok {
+        paused: (is-dao-paused),
+        pause-end-block: (var-get emergency-pause-end),
+    })
 )
