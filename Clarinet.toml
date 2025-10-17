@@ -1,0 +1,20 @@
+[project]
+name = "dao-community-investment"
+description = "An on-chain DAO for community investment decisions"
+authors = ["habilad134@gmail.com"]
+telemetry = false
+cache_dir = "./.cache"
+requirements = []
+clarity_version = 1
+
+[contracts.dao-core]
+path = "contracts/dao-core.clar"
+clarity_version = 1
+
+[contracts.dao-treasury]
+path = "contracts/dao-treasury.clar"
+clarity_version = 1
+
+[repl]
+costs_version = 1
+parser_version = 1
