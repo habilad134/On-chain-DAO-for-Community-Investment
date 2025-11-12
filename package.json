@@ -1,0 +1,13 @@
+{
+  "name": "dao-community-investment",
+  "version": "1.0.0",
+  "description": "An on-chain DAO for community investment decisions",
+  "scripts": {
+    "test": "echo 'No npm tests configured - using clarinet check for validation' && exit 0",
+    "lint": "echo 'No linting configured' && exit 0",
+    "typecheck": "echo 'No TypeScript configured' && exit 0"
+  },
+  "keywords": ["stacks", "clarity", "dao", "investment"],
+  "author": "habilad134@gmail.com",
+  "license": "MIT"
+}
